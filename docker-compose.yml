@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: marketscout
+      POSTGRES_USER: ms_user
+      POSTGRES_PASSWORD: ms_secure_pass_2024
+    ports:
+      - "5433:5432"  # 5433 externally to avoid conflict with local PostgreSQL
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ms_user -d marketscout"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  middleware:
+    build: ./middleware
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://ms_user:ms_secure_pass_2024@db:5432/marketscout
+      DEBUG: "false"
+      ALLOWED_HOSTS: "*"
+    volumes:
+      - ./middleware:/app
+      - ./logs:/app/logs
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - middleware
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+
+  engine:
+    build: ./core-engine
+    depends_on:
+      - middleware
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://middleware:8000
+      STARTUP_DELAY: "20"
+
+volumes:
+  pgdata:
